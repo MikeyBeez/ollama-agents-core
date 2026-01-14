@@ -1,95 +1,64 @@
+# ollama-agents-core/utils/initialize_db.py
+
 import sqlite3
 from pathlib import Path
-from config import DB_FILE, EDGE_TABLE_NAME, EDGE_INDEX_PREFIX
+import sys
+
+# Add the ollama-agents-data directory to the Python path
+ollama_agents_data_dir = Path.home() / "ollama-agents-data"
+sys.path.insert(0, str(ollama_agents_data_dir))
+
+print(f"Python path: {sys.path}")
+
+# Now import from the config file in ollama-agents-data
+from config import DB_FILE, EDGE_TABLE_NAME, DATA_DIR
+
+print(f"DATA_DIR from config: {DATA_DIR}")
+
+# Import the schema from ollama-agents-data
+schema_path = DATA_DIR / "schema.py"
+if not schema_path.exists():
+    raise FileNotFoundError(f"Schema file not found at: {schema_path}")
+
+print(f"Loading schema from: {schema_path}")
+from schema import SCHEMA
+
+print(f"DB_FILE: {DB_FILE}")
+print(f"EDGE_TABLE_NAME: {EDGE_TABLE_NAME}")
 
 def initialize_database():
-    db_file = Path(DB_FILE)
+    db_file = Path(DB_FILE).expanduser()
+    db_dir = db_file.parent
+
+    print(f"Initializing database at: {db_file}")
+    print(f"Database directory: {db_dir}")
+
+    # Ensure the database directory exists
+    db_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Ensured database directory exists")
 
     if db_file.exists():
-        conn = sqlite3.connect(DB_FILE)
+        print(f"Database file already exists")
+        conn = sqlite3.connect(str(db_file))
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (EDGE_TABLE_NAME,))
         if cursor.fetchone():
+            print(f"Main table '{EDGE_TABLE_NAME}' already exists")
             conn.close()
             return
         conn.close()
 
-    conn = sqlite3.connect(DB_FILE)
+    print(f"Creating new database")
+    conn = sqlite3.connect(str(db_file))
     cursor = conn.cursor()
 
-    cursor.execute(f'''
-    CREATE TABLE IF NOT EXISTS {EDGE_TABLE_NAME} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_id TEXT NOT NULL,
-        target_id TEXT NOT NULL,
-        relationship_type TEXT NOT NULL,
-        strength REAL,
-        confidence REAL,
-        bidirectional BOOLEAN,
-        start_time TIMESTAMP,
-        end_time TIMESTAMP,
-        metadata JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
+    print(f"Executing schema")
+    cursor.executescript(SCHEMA)
 
-    cursor.execute(f'CREATE INDEX IF NOT EXISTS {EDGE_INDEX_PREFIX}source ON {EDGE_TABLE_NAME} (source_id)')
-    cursor.execute(f'CREATE INDEX IF NOT EXISTS {EDGE_INDEX_PREFIX}target ON {EDGE_TABLE_NAME} (target_id)')
-    cursor.execute(f'CREATE INDEX IF NOT EXISTS {EDGE_INDEX_PREFIX}relationship ON {EDGE_TABLE_NAME} (relationship_type)')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS node_attributes (
-        node_id TEXT NOT NULL,
-        attribute_name TEXT NOT NULL,
-        attribute_value TEXT,
-        confidence REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (node_id, attribute_name)
-    )
-    ''')
-
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS hierarchies (
-        parent_id TEXT NOT NULL,
-        child_id TEXT NOT NULL,
-        hierarchy_type TEXT NOT NULL,
-        confidence REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (parent_id, child_id, hierarchy_type)
-    )
-    ''')
-
-    cursor.execute(f'''
-    CREATE TRIGGER IF NOT EXISTS update_{EDGE_TABLE_NAME}_timestamp
-    AFTER UPDATE ON {EDGE_TABLE_NAME}
-    BEGIN
-        UPDATE {EDGE_TABLE_NAME} SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
-    ''')
-
-    cursor.execute('''
-    CREATE TRIGGER IF NOT EXISTS update_node_attributes_timestamp
-    AFTER UPDATE ON node_attributes
-    BEGIN
-        UPDATE node_attributes SET updated_at = CURRENT_TIMESTAMP
-        WHERE node_id = NEW.node_id AND attribute_name = NEW.attribute_name;
-    END;
-    ''')
-
-    cursor.execute('''
-    CREATE TRIGGER IF NOT EXISTS update_hierarchies_timestamp
-    AFTER UPDATE ON hierarchies
-    BEGIN
-        UPDATE hierarchies SET updated_at = CURRENT_TIMESTAMP
-        WHERE parent_id = NEW.parent_id AND child_id = NEW.child_id AND hierarchy_type = NEW.hierarchy_type;
-    END;
-    ''')
-
+    print(f"Committing changes")
     conn.commit()
     conn.close()
+    print(f"Database initialization complete")
 
 if __name__ == "__main__":
     initialize_database()

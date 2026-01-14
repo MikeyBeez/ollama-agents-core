@@ -6,27 +6,31 @@ from pathlib import Path
 # Add necessary directories to Python path
 project_root = Path(__file__).resolve().parent.parent
 ollama_agents_data_dir = Path.home() / "ollama-agents-data"
-ollama_agents_knowledge_dir = Path.home() / "Code" / "ollama-agents-knowledge"
-sys.path.insert(0, str(ollama_agents_data_dir))
+sys.path.insert(0, str(ollama_agents_data_dir))  # Prioritize ollama-agents-data for imports
 sys.path.append(str(project_root))
-sys.path.append(str(ollama_agents_knowledge_dir))
 
 print(f"Python path in simple_agent.py: {sys.path}")
 
 import logging
-from config import USER_NAME, AGENT_NAME, LOG_FILE, LOG_LEVEL, DEFAULT_MODEL, DB_FILE
+from config import USER_NAME, AGENT_NAME, LOG_FILE, LOG_LEVEL, DEFAULT_MODEL
 from utils.initialize_db import initialize_database
 from src.modules.input import get_user_input
 from src.modules.ollama_client import generate_response
 from src.modules.save_history import save_interaction
 
+print(f"Config loaded from: {ollama_agents_data_dir / 'config.py'}")
+print(f"USER_NAME: {USER_NAME}")
+print(f"AGENT_NAME: {AGENT_NAME}")
+print(f"LOG_FILE: {LOG_FILE}")
+print(f"DEFAULT_MODEL: {DEFAULT_MODEL}")
+
 # Try to import ollama_agents_knowledge
 try:
-    from ollama_agents_knowledge import kb_graph, knowledge_extraction, memory_search
-    print("Successfully imported ollama_agents_knowledge modules")
+    import ollama_agents_knowledge as oak
+    print("Successfully imported ollama_agents_knowledge")
 except ImportError as e:
-    print(f"Failed to import ollama_agents_knowledge modules: {e}")
-    kb_graph = knowledge_extraction = memory_search = None
+    print(f"Failed to import ollama_agents_knowledge: {e}")
+    oak = None
 
 # Set up logging
 logging.basicConfig(filename=LOG_FILE, level=LOG_LEVEL,
@@ -34,12 +38,6 @@ logging.basicConfig(filename=LOG_FILE, level=LOG_LEVEL,
 logger = logging.getLogger(__name__)
 
 print(f"Logging setup complete. Log file: {LOG_FILE}")
-print(f"Config loaded from: {ollama_agents_data_dir / 'config.py'}")
-print(f"USER_NAME: {USER_NAME}")
-print(f"AGENT_NAME: {AGENT_NAME}")
-print(f"LOG_FILE: {LOG_FILE}")
-print(f"DEFAULT_MODEL: {DEFAULT_MODEL}")
-print(f"DB_FILE: {DB_FILE}")
 
 class SimpleAgent:
     def __init__(self):
@@ -51,18 +49,18 @@ class SimpleAgent:
         response = generate_response(user_input, self.model, self.user_name)
         save_interaction(user_input, response, self.user_name, self.model)
 
-        if kb_graph and knowledge_extraction and memory_search:
+        if oak:
             try:
-                extracted_knowledge = knowledge_extraction.extract_knowledge(user_input)
+                extracted_knowledge = oak.knowledge_extraction.extract_knowledge(user_input)
                 logger.info(f"Extracted knowledge: {extracted_knowledge}")
 
-                prompt_id = kb_graph.create_node(user_input)
-                response_id = kb_graph.create_node(response)
-                kb_graph.create_edge(prompt_id, response_id, "RESPONSE_TO", 1.0)
+                prompt_id = oak.kb_graph.create_node(user_input)
+                response_id = oak.kb_graph.create_node(response)
+                oak.kb_graph.create_edge(prompt_id, response_id, "RESPONSE_TO", 1.0)
 
-                memory_search.save_memory("interaction", {"prompt": user_input, "response": response}, self.user_name, self.model)
+                oak.memory_search.save_memory("interaction", {"prompt": user_input, "response": response}, self.user_name, self.model)
             except Exception as e:
-                logger.error(f"Error in ollama_agents_knowledge operations: {e}", exc_info=True)
+                logger.error(f"Error in ollama_agents_knowledge operations: {e}")
 
         return response
 
@@ -84,15 +82,15 @@ def main():
             response = agent.respond(user_input)
             print(response)
 
-            if memory_search:
+            if oak:
                 try:
-                    related_memories = memory_search.search_memories(user_input, top_k=3, similarity_threshold=0.5)
+                    related_memories = oak.memory_search.search_memories(user_input, top_k=3, similarity_threshold=0.5)
                     if related_memories:
                         print("Related memories:")
                         for memory in related_memories:
                             print(f"- {memory['content']}")
                 except Exception as e:
-                    logger.error(f"Error searching memories: {e}", exc_info=True)
+                    logger.error(f"Error searching memories: {e}")
 
 if __name__ == "__main__":
     main()

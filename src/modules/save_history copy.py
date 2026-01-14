@@ -4,7 +4,6 @@ from pathlib import Path
 # Add the shared config directory to the Python path
 shared_config_dir = Path.home() / "ollama_agents_data"
 sys.path.insert(0, str(shared_config_dir))
-
 # src/modules/save_history.py
 
 import json
@@ -25,7 +24,7 @@ class ChatHistory:
             cls._instance = super(ChatHistory, cls).__new__(cls)
             cls._instance.max_length = MEMORY_LENGTH
             cls._instance.history = []
-            cls._instance.file_path = Path(CHAT_HISTORY_FILE).expanduser()
+            cls._instance.file_path = CHAT_HISTORY_FILE
             cls._instance.load_history()
         return cls._instance
 
@@ -82,8 +81,7 @@ class ChatHistory:
 chat_history = ChatHistory()
 
 def save_memory(memory_type: str, content: Dict[str, Any], username: str, model_name: str, metadata: Dict[str, Any] = None):
-    data_dir = Path(DATA_DIR).expanduser()
-    ensure_directory_exists(data_dir)
+    ensure_directory_exists(DATA_DIR)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_{memory_type}.json"
     data = {
@@ -97,7 +95,7 @@ def save_memory(memory_type: str, content: Dict[str, Any], username: str, model_
     }
     if metadata:
         data.update(metadata)
-    file_path = data_dir / filename
+    file_path = DATA_DIR / filename
     write_json_file(file_path, data)
     logger.info(f"Saved {memory_type} memory: {filename}")
 
